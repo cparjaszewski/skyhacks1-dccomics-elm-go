@@ -1,4 +1,4 @@
-module Editable exposing (..)
+module Editable exposing (Editable(..), bufferValue, cancelEditing, commitBuffer, finishEditing, hasChanged, isEditing, newEditing, setBuffer, startEditing, value)
 
 
 type Editable ofType

@@ -1,13 +1,24 @@
-module Main exposing (..)
+module Main exposing (Dimension(..), HttpRequest, Model, Msg(..), coordinates, generateMaze, generateRooms, init, main, mazeHeight, mazeView, mazeWidth, ourPostRequest, roomView, roomsView, scale, scaledSizeInPx, selectionForm, someDecoder, subscriptions, update, view)
 
-import Generators exposing (Algorithm(..))
+import Basics exposing (toString)
+import Debug exposing (log)
 import Editable exposing (Editable)
-import Types exposing (Room, Side)
-import Html exposing (Html, text, div, input, label, button, span)
+import Generators exposing (Algorithm(..))
+import Html exposing (Html, button, div, input, label, span, text)
 import Html.Attributes exposing (style, type_, value)
-import Html.Events exposing (onInput, onClick)
-import Random
+import Html.Events exposing (onClick, onInput)
+import Http exposing (expectStringResponse, jsonBody, post)
+import Http.Internal exposing (stringBody)
+import Json.Decode exposing (Decoder, decodeString, field, int, list, string)
+import Json.Encode as Encode
 import List.Extra as List
+import Random
+import Types exposing (Room, Side)
+
+
+someDecoder : Decoder String
+someDecoder =
+    field "cokolwiek" string
 
 
 type alias Model =
@@ -16,6 +27,7 @@ type alias Model =
     , seedForSideGenerator : Random.Seed
     , rooms : List Room
     , algorithm : Algorithm
+    , backendIndicator : Int
     }
 
 
@@ -24,12 +36,18 @@ type Dimension
     | Height
 
 
+type alias HttpRequest =
+    Result Http.Error String
+
+
 type Msg
     = SetSideSeed Random.Seed
     | SetDimension Dimension String
     | CommitDimensionChanges
     | ChooseAlgorithm Algorithm
     | RegenerateMaze
+    | SaveMazeClick
+    | SaveMaze HttpRequest
 
 
 scale =
@@ -61,6 +79,7 @@ init =
             , seedForSideGenerator = Random.initialSeed 0
             , rooms = []
             , algorithm = Sidewinder
+            , backendIndicator = 0
             }
 
         generateInitialSideSeedCmd =
@@ -68,14 +87,14 @@ init =
                 |> Random.map Random.initialSeed
                 |> Random.generate SetSideSeed
     in
-        ( initialModel
-        , generateInitialSideSeedCmd
-        )
+    ( initialModel
+    , generateInitialSideSeedCmd
+    )
 
 
 coordinates : Int -> Int -> List ( Int, Int )
 coordinates width height =
-    List.lift2 (,) (List.range 0 (width - 1)) (List.range 0 (height - 1))
+    List.lift2 (\a b -> ( a, b )) (List.range 0 (width - 1)) (List.range 0 (height - 1))
 
 
 generateRooms : Model -> List Room
@@ -94,47 +113,90 @@ generateMaze algorithm model =
             generateRooms model
                 |> mazeGenerator { seed = model.seedForSideGenerator, width = mazeWidth model, height = mazeHeight model }
     in
-        { model | algorithm = algorithm, rooms = rooms, seedForSideGenerator = finalSeed }
+    { model | algorithm = algorithm, rooms = rooms, seedForSideGenerator = finalSeed }
+
+
+ourPostRequest : Model -> Http.Request String
+ourPostRequest model =
+    let
+        jsonModelBody =
+            [ ( "backendIndicator", Encode.int model.backendIndicator ) ]
+                |> Encode.object
+                |> Http.jsonBody
+                |> log ""
+
+        url =
+            "http://localhost:5000/save?maze="
+    in
+    Http.request
+        { body = jsonModelBody
+        , expect = Http.expectString
+        , headers = [ stringBody ]
+        , method = "POST"
+        , timeout = Nothing
+        , url = url
+        , withCredentials = False
+        }
+        |> log "request"
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        SaveMazeClick ->
+            ( model
+            , Http.send SaveMaze (ourPostRequest model)
+            )
+
+        SaveMaze result ->
+            let
+                updatedBackendIndicator =
+                    case result of
+                        Ok _ ->
+                            1
+
+                        Err _ ->
+                            2
+            in
+            ( { model | backendIndicator = updatedBackendIndicator }
+            , Cmd.none
+            )
+
         RegenerateMaze ->
             let
                 updatedModel =
                     generateMaze model.algorithm model
             in
-                ( updatedModel
-                , Cmd.none
-                )
+            ( updatedModel
+            , Cmd.none
+            )
 
         ChooseAlgorithm algorithm ->
             let
                 updatedModel =
                     generateMaze algorithm model
             in
-                ( updatedModel
-                , Cmd.none
-                )
+            ( updatedModel
+            , Cmd.none
+            )
 
         SetSideSeed seed ->
             let
                 updatedModel =
                     generateMaze model.algorithm { model | seedForSideGenerator = seed }
             in
-                ( updatedModel
-                , Cmd.none
-                )
+            ( updatedModel
+            , Cmd.none
+            )
 
         CommitDimensionChanges ->
             let
                 updatedModel =
                     generateMaze model.algorithm { model | width = Editable.commitBuffer model.width, height = Editable.commitBuffer model.height }
             in
-                ( updatedModel
-                , Cmd.none
-                )
+            ( updatedModel
+            , Cmd.none
+            )
 
         SetDimension which newValue ->
             let
@@ -154,9 +216,9 @@ update msg model =
                         Width ->
                             { model | width = updateProperty model.width }
             in
-                ( updatedModel
-                , Cmd.none
-                )
+            ( updatedModel
+            , Cmd.none
+            )
 
 
 roomView : Room -> Html Msg
@@ -182,20 +244,18 @@ roomView { x, y, walls } =
                 Types.All ->
                     ( "1px solid black", "1px solid black" )
     in
-        div
-            [ style
-                [ ( "position", "absolute" )
-                , ( "border-top", topBorder )
-                , ( "border-right", rightBorder )
-                , ( "padding", "0" )
-                , ( "margin", "0" )
-                , ( "left", left )
-                , ( "top", top )
-                , ( "width", width )
-                , ( "height", width )
-                ]
-            ]
-            []
+    div
+        [ style "position" "absolute"
+        , style "border-top" topBorder
+        , style "border-right" rightBorder
+        , style "padding" "0"
+        , style "margin" "0"
+        , style "left" left
+        , style "top" top
+        , style "width" width
+        , style "height" width
+        ]
+        []
 
 
 roomsView : Model -> List (Html Msg)
@@ -205,7 +265,7 @@ roomsView model =
 
 scaledSizeInPx : Int -> String
 scaledSizeInPx size =
-    (toString (size * scale)) ++ "px"
+    toString (size * scale) ++ "px"
 
 
 mazeView : Model -> Html Msg
@@ -217,8 +277,8 @@ mazeView model =
         height =
             scaledSizeInPx <| mazeHeight model
     in
-        div [ style [ ( "position", "relative" ), ( "border-bottom", "1px solid black" ), ( "border-left", "1px solid black" ), ( "width", width ), ( "height", height ), ( "margin-left", "20px" ), ( "margin-top", "20px" ) ] ] <|
-            roomsView model
+    div [ style "position" "relative", style "border-bottom" "1px solid black", style "border-left" "1px solid black", style "width" width, style "height" height, style "margin-left" "20px", style "margin-top" "20px" ] <|
+        roomsView model
 
 
 selectionForm : Model -> Html Msg
@@ -227,30 +287,33 @@ selectionForm model =
         algorithmChooser algorithm currentAlgorithm label =
             if algorithm == currentAlgorithm then
                 span [] [ text <| "<X> " ++ label ]
+
             else
                 span [ onClick <| ChooseAlgorithm algorithm ] [ text <| "< > " ++ label ]
     in
-        div []
-            [ div []
-                [ label [] [ text "Width" ]
-                , input [ type_ "number", onInput (SetDimension Width), value <| toString <| Editable.bufferValue model.width ] []
-                ]
-            , div []
-                [ label [] [ text "Height" ]
-                , input [ type_ "number", onInput (SetDimension Height), value <| toString <| Editable.bufferValue model.height ] []
-                ]
-            , button [ onClick CommitDimensionChanges ] [ text "Set New Dimensions" ]
-            , div []
-                [ text "Algorithm"
-                , span [] [ text " | " ]
-                , algorithmChooser PlainGrid model.algorithm "None"
-                , span [] [ text " | " ]
-                , algorithmChooser BinaryTree model.algorithm "Binary Tree"
-                , span [] [ text " | " ]
-                , algorithmChooser Sidewinder model.algorithm "Sidewinder"
-                ]
-            , button [ onClick RegenerateMaze ] [ text "Regenerate Maze" ]
+    div []
+        [ div []
+            [ label [] [ text "Width" ]
+            , input [ type_ "number", onInput (SetDimension Width), value <| toString <| Editable.bufferValue model.width ] []
             ]
+        , div []
+            [ label [] [ text "Height" ]
+            , input [ type_ "number", onInput (SetDimension Height), value <| toString <| Editable.bufferValue model.height ] []
+            ]
+        , button [ onClick CommitDimensionChanges ] [ text "Set New Dimensions" ]
+        , div []
+            [ text "Algorithm"
+            , span [] [ text " | " ]
+            , algorithmChooser PlainGrid model.algorithm "None"
+            , span [] [ text " | " ]
+            , algorithmChooser BinaryTree model.algorithm "Binary Tree"
+            , span [] [ text " | " ]
+            , algorithmChooser Sidewinder model.algorithm "Sidewinder"
+            ]
+        , button [ onClick RegenerateMaze ] [ text "Regenerate Maze" ]
+        , button [ onClick SaveMazeClick ] [ text "Save Maze" ]
+        , text (toString model.backendIndicator)
+        ]
 
 
 view : Model -> Html Msg
