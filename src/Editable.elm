@@ -1,4 +1,4 @@
-module Editable exposing (Editable(..), bufferValue, cancelEditing, commitBuffer, finishEditing, hasChanged, isEditing, newEditing, setBuffer, startEditing, value)
+module Editable exposing (Editable(..), bufferValue, cancelEditing, commitBuffer, finishEditing, hasChanged, isEditing, newEditing, setBuffer, startEditing, setValue)
 
 
 type Editable ofType
@@ -6,8 +6,8 @@ type Editable ofType
     | Editing { originalValue : ofType, buffer : ofType }
 
 
-value : Editable ofType -> ofType
-value editable =
+setValue : Editable ofType -> ofType
+setValue editable =
     case editable of
         NotEditing { value } ->
             value
@@ -47,8 +47,8 @@ setBuffer editable newBuffer =
 
 
 newEditing : ofType -> Editable ofType
-newEditing value =
-    Editing { originalValue = value, buffer = value }
+newEditing newEditingValue =
+    Editing { originalValue = newEditingValue, buffer = newEditingValue }
 
 
 startEditing : Editable ofType -> Editable ofType

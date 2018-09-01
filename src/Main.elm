@@ -1,19 +1,20 @@
 module Main exposing (Dimension(..), HttpRequest, Model, Msg(..), coordinates, generateMaze, generateRooms, init, main, mazeHeight, mazeView, mazeWidth, ourPostRequest, roomView, roomsView, scale, scaledSizeInPx, selectionForm, someDecoder, subscriptions, update, view)
 
-import Basics exposing (toString)
-import Debug exposing (log)
-import Editable exposing (Editable)
+import Browser
+import Browser.Navigation as Nav
+import Debug exposing (log, toString)
+import Editable exposing (Editable, newEditing, setValue)
 import Generators exposing (Algorithm(..))
 import Html exposing (Html, button, div, input, label, span, text)
 import Html.Attributes exposing (style, type_, value)
 import Html.Events exposing (onClick, onInput)
 import Http exposing (expectStringResponse, jsonBody, post)
-import Http.Internal exposing (stringBody)
-import Json.Decode exposing (Decoder, decodeString, field, int, list, string)
+import Json.Decode exposing (Decoder, Value, decodeString, field, int, list, string)
 import Json.Encode as Encode
 import List.Extra as List
 import Random
 import Types exposing (Room, Side)
+import Url exposing (Url)
 
 
 someDecoder : Decoder String
@@ -36,9 +37,6 @@ type Dimension
     | Height
 
 
-type alias HttpRequest =
-    Result Http.Error String
-
 
 type Msg
     = SetSideSeed Random.Seed
@@ -48,7 +46,12 @@ type Msg
     | RegenerateMaze
     | SaveMazeClick
     | SaveMaze HttpRequest
+    | None
 
+type alias HttpRequest a =
+    Result Http.Error a
+
+type Result error value = Ok value | Err error
 
 scale =
     10
@@ -56,16 +59,16 @@ scale =
 
 mazeWidth : Model -> Int
 mazeWidth model =
-    Editable.value model.width
+    Editable.setValue model.width
 
 
 mazeHeight : Model -> Int
 mazeHeight model =
-    Editable.value model.height
+    Editable.setValue model.height
 
 
-init : ( Model, Cmd Msg )
-init =
+init : flags -> Url -> Nav.Key -> ( Model, Cmd Msg )
+init flags url navkey=
     let
         initialWidth =
             5
@@ -126,12 +129,12 @@ ourPostRequest model =
                 |> log ""
 
         url =
-            "http://localhost:5000/save?maze="
+            "http://localhost:5000/save"
     in
     Http.request
         { body = jsonModelBody
-        , expect = Http.expectString
-        , headers = [ stringBody ]
+        , expect = Http.expectJson someDecoder
+        , headers = [Http.header "a" "b" ]
         , method = "POST"
         , timeout = Nothing
         , url = url
@@ -201,24 +204,24 @@ update msg model =
         SetDimension which newValue ->
             let
                 updateProperty property =
-                    case String.toInt newValue of
-                        Ok w ->
-                            Editable.setBuffer property w
-
-                        Err _ ->
-                            property
+                    Editable.setBuffer property
 
                 updatedModel =
                     case which of
                         Height ->
-                            { model | height = updateProperty model.height }
+                            setValue { model | height = updateProperty model.height }
 
                         Width ->
-                            { model | width = updateProperty model.width }
+                            setValue { model | width = updateProperty model.width }
             in
             ( updatedModel
             , Cmd.none
             )
+
+        None ->
+             ( model
+             , Cmd.none
+             )
 
 
 roomView : Room -> Html Msg
@@ -316,24 +319,59 @@ selectionForm model =
         ]
 
 
-view : Model -> Html Msg
+view : Model -> {
+    title : String
+    , body : List (Html Msg)
+    }
 view model =
-    div []
-        [ selectionForm model
-        , mazeView model
+    {
+        title = "Elm & Go Hackathon"
+        , body = [
+            div []
+                [ selectionForm model
+                , mazeView model
+                ]
         ]
+    }
 
+
+type alias Document msg =
+  { title : String
+  , body : List (Html msg)
+  }
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.none
 
-
-main : Program Never Model Msg
-main =
-    Html.program
+application :
+        { init :  flags -> Url -> Nav.Key -> ( Model, Cmd Msg )
+        , onUrlChange : Url -> Msg
+        , onUrlRequest : Browser.UrlRequest -> Msg
+        , subscriptions : Model -> Sub Msg
+        , update : Msg -> Model -> ( Model, Cmd Msg )
+        , view : Model -> Browser.Document Msg
+        }
+    -> Program Value Model Msg
+application config =
+    Browser.application
         { init = init
+        , onUrlChange = config.onUrlChange
+        , onUrlRequest = config.onUrlRequest
+        , subscriptions = config.subscriptions
+        , update = config.update
+        , view = config.view
+        }
+
+
+
+main : Program Value Model Msg
+main =
+    application
+        { init = init
+        , subscriptions = subscriptions
         , update = update
         , view = view
-        , subscriptions = subscriptions
+        , onUrlChange = (\_ -> None)
+        , onUrlRequest = (\_ -> None)
         }

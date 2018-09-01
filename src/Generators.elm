@@ -20,6 +20,10 @@ plainGridAlgorithm { seed } rooms =
     ( rooms, seed )
 
 
+randomBool : Random.Generator Bool
+randomBool =
+  Random.weighted (50, True) [ (50, False) ]
+
 binaryTreeAlgorithm : MazeGenerator
 binaryTreeAlgorithm { seed, width } rooms =
     let
@@ -41,7 +45,7 @@ binaryTreeAlgorithm { seed, width } rooms =
                 ( Types.Right, fromSeed )
 
             else
-                Random.step (Random.map pickASide Random.bool) fromSeed
+                Random.step (Random.map pickASide randomBool) fromSeed
 
         figureOutSide room ( updatedRooms, currentSeed ) =
             let
@@ -61,27 +65,27 @@ binaryTreeAlgorithm { seed, width } rooms =
 sidewinderAlgorithm : MazeGenerator
 sidewinderAlgorithm { seed, width, height } rooms =
     let
-        getRow index rooms =
-            List.filter (\{ x, y, walls } -> y == index) rooms
+        getRow index indexRooms =
+            List.filter (\{ x, y, walls } -> y == index) indexRooms
 
         sameRoom room1 room2 =
             room1.x == room2.x && room1.y == room2.y
 
         replaceRoom room ( updatedRooms, currentSeed ) =
-            ( List.replaceIf (sameRoom room) room updatedRooms
+            ( List.setIf (sameRoom room) room updatedRooms
             , currentSeed
             )
 
-        replaceRooms index rooms ( roomsToReplace, seed ) =
+        replaceRooms index replRooms ( roomsToReplace, replaceSeed ) =
             List.foldl
                 replaceRoom
-                ( rooms, seed )
+                ( replRooms, replaceSeed )
                 roomsToReplace
 
-        updateTopRow width index ( rooms, seed ) =
+        updateTopRow updateWidth index ( updateRooms, updateSeed ) =
             ( List.map
                 (\room ->
-                    if room.x < width - 1 then
+                    if room.x < updateWidth - 1 then
                         { room | walls = Top }
 
                     else
@@ -91,13 +95,13 @@ sidewinderAlgorithm { seed, width, height } rooms =
             , seed
             )
 
-        processRow width height index ( rooms, seed ) =
-            ( rooms, seed )
+        processRow processWidth processHeight index ( processRooms, processSeed ) =
+            ( processRooms, processSeed )
 
-        updateRow processor index ( rooms, seed ) =
-            ( getRow index rooms, seed )
+        updateRow processor index ( updateRooms, updateSeed ) =
+            ( getRow index updateRooms, updateSeed )
                 |> processor index
-                |> replaceRooms index rooms
+                |> replaceRooms index updateRooms
     in
     updateRow (updateTopRow width) 0 ( rooms, seed )
         |> updateRow (processRow width height) 1
