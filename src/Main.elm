@@ -1,4 +1,4 @@
-module Main exposing (Dimension(..), HttpRequest, Model, Msg(..), coordinates, generateMaze, generateRooms, init, main, mazeHeight, mazeView, mazeWidth, ourPostRequest, roomView, roomsView, scale, scaledSizeInPx, selectionForm, someDecoder, subscriptions, update, view)
+module Main exposing (Dimension(..), Model, Msg(..), coordinates, generateMaze, generateRooms, init, main, mazeHeight, mazeView, mazeWidth, ourPostRequest, roomView, roomsView, scale, scaledSizeInPx, selectionForm, someDecoder, subscriptions, update, view)
 
 import Browser
 import Browser.Navigation as Nav
@@ -16,11 +16,8 @@ import Random
 import Types exposing (Room, Side)
 import Url exposing (Url)
 
-
 someDecoder : Decoder String
-someDecoder =
-    field "cokolwiek" string
-
+someDecoder = field "cokolwiek" string
 
 type alias Model =
     { width : Editable Int
@@ -31,12 +28,7 @@ type alias Model =
     , backendIndicator : Int
     }
 
-
-type Dimension
-    = Width
-    | Height
-
-
+type Dimension = Width | Height
 
 type Msg
     = SetSideSeed Random.Seed
@@ -45,27 +37,17 @@ type Msg
     | ChooseAlgorithm Algorithm
     | RegenerateMaze
     | SaveMazeClick
-    | SaveMaze HttpRequest
+    | SaveMaze (Result Http.Error String)
     | None
 
-type alias HttpRequest a =
-    Result Http.Error a
-
-type Result error value = Ok value | Err error
-
-scale =
-    10
-
+scale = 10
 
 mazeWidth : Model -> Int
-mazeWidth model =
-    Editable.setValue model.width
-
+mazeWidth model = Editable.setValue model.width
 
 mazeHeight : Model -> Int
 mazeHeight model =
     Editable.setValue model.height
-
 
 init : flags -> Url -> Nav.Key -> ( Model, Cmd Msg )
 init flags url navkey=
@@ -94,17 +76,14 @@ init flags url navkey=
     , generateInitialSideSeedCmd
     )
 
-
 coordinates : Int -> Int -> List ( Int, Int )
 coordinates width height =
     List.lift2 (\a b -> ( a, b )) (List.range 0 (width - 1)) (List.range 0 (height - 1))
-
 
 generateRooms : Model -> List Room
 generateRooms model =
     coordinates (mazeWidth model) (mazeHeight model)
         |> List.map (\( x, y ) -> { x = x, y = y, walls = Types.All })
-
 
 generateMaze : Algorithm -> Model -> Model
 generateMaze algorithm model =
@@ -118,7 +97,6 @@ generateMaze algorithm model =
     in
     { model | algorithm = algorithm, rooms = rooms, seedForSideGenerator = finalSeed }
 
-
 ourPostRequest : Model -> Http.Request String
 ourPostRequest model =
     let
@@ -126,22 +104,21 @@ ourPostRequest model =
             [ ( "backendIndicator", Encode.int model.backendIndicator ) ]
                 |> Encode.object
                 |> Http.jsonBody
-                |> log ""
+                |> log "ourPostRequest"
 
         url =
-            "http://localhost:5000/save"
+            "https://onet.pl/save"
     in
     Http.request
         { body = jsonModelBody
         , expect = Http.expectJson someDecoder
-        , headers = [Http.header "a" "b" ]
+        , headers = [Http.header "Content-type" "application/json", Http.header "charset" "utf-8" ]
         , method = "POST"
         , timeout = Nothing
         , url = url
         , withCredentials = False
         }
         |> log "request"
-
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
@@ -203,16 +180,18 @@ update msg model =
 
         SetDimension which newValue ->
             let
-                updateProperty property =
-                    Editable.setBuffer property
+                updateProperty property buffer =
+                    Editable.setBuffer property buffer
+
+                newValueInt = (Result.withDefault 0 (Result.fromMaybe ("Error parsing newValue" ++ toString newValue) (String.toInt newValue) ))
 
                 updatedModel =
                     case which of
                         Height ->
-                            setValue { model | height = updateProperty model.height }
+                            { model | height = updateProperty model.height newValueInt }
 
                         Width ->
-                            setValue { model | width = updateProperty model.width }
+                            { model | width = updateProperty model.width newValueInt }
             in
             ( updatedModel
             , Cmd.none
@@ -222,7 +201,6 @@ update msg model =
              ( model
              , Cmd.none
              )
-
 
 roomView : Room -> Html Msg
 roomView { x, y, walls } =
@@ -260,16 +238,13 @@ roomView { x, y, walls } =
         ]
         []
 
-
 roomsView : Model -> List (Html Msg)
 roomsView model =
     List.map roomView model.rooms
 
-
 scaledSizeInPx : Int -> String
 scaledSizeInPx size =
     toString (size * scale) ++ "px"
-
 
 mazeView : Model -> Html Msg
 mazeView model =
@@ -282,7 +257,6 @@ mazeView model =
     in
     div [ style "position" "relative", style "border-bottom" "1px solid black", style "border-left" "1px solid black", style "width" width, style "height" height, style "margin-left" "20px", style "margin-top" "20px" ] <|
         roomsView model
-
 
 selectionForm : Model -> Html Msg
 selectionForm model =
@@ -318,7 +292,6 @@ selectionForm model =
         , text (toString model.backendIndicator)
         ]
 
-
 view : Model -> {
     title : String
     , body : List (Html Msg)
@@ -334,15 +307,13 @@ view model =
         ]
     }
 
-
 type alias Document msg =
   { title : String
   , body : List (Html msg)
   }
 
 subscriptions : Model -> Sub Msg
-subscriptions model =
-    Sub.none
+subscriptions model = Sub.none
 
 application :
         { init :  flags -> Url -> Nav.Key -> ( Model, Cmd Msg )
@@ -362,8 +333,6 @@ application config =
         , update = config.update
         , view = config.view
         }
-
-
 
 main : Program Value Model Msg
 main =
